@@ -1,0 +1,52 @@
+# Render Blueprint for the Lightpanda MCP server.
+# Deploy: Render dashboard -> New -> Blueprint -> point at this repo.
+#
+# No persistent disk is declared here on purpose -- the MCP server and
+# its browsing sessions are stateless in memory, Render's free tier has
+# no disk anyway, and nothing here needs to survive a restart.
+
+services:
+  - type: web
+    name: lightpanda-mcp
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon          # change to whichever Render region is closest to you
+
+    # Deliberately no healthCheckPath: the MCP server only exposes
+    # POST /mcp, and every path (including /mcp itself) returns HTTP 405
+    # to a plain GET -- confirmed against the running binary. Setting a
+    # healthCheckPath here would make Render treat a perfectly healthy
+    # service as failing. Leaving it unset falls back to Render's
+    # port-open check instead.
+
+    envVars:
+      # --- core ---
+      - key: LOG_LEVEL
+        value: warn
+      - key: LOG_FORMAT
+        value: logfmt
+      - key: V8_MAX_HEAP_MB
+        value: "400"        # headroom under the free tier's 512MB cap
+      - key: HTTP_MAX_CONCURRENT
+        value: "5"
+      - key: HTTP_MAX_HOST_OPEN
+        value: "2"
+      - key: OBEY_ROBOTS
+        value: "true"
+      - key: BLOCK_PRIVATE_NETWORKS
+        value: "true"       # SSRF guard: blocks requests to internal/private IPs
+
+      # --- bot-protection / identity (fill in via dashboard, not here) ---
+      # Set these as plain env vars in the Render dashboard:
+      #   HTTP_PROXY_URL          e.g. http://user:pass@residential-proxy:port
+      #   PROXY_BEARER_TOKEN      only if your proxy provider uses bearer auth
+      #   USER_AGENT_SUFFIX       e.g. "(+https://yourdomain.com/bot)"
+      #   WEB_BOT_AUTH_DOMAIN     e.g. yourdomain.com
+      #   WEB_BOT_AUTH_KEYID      JWK thumbprint from generate-webbotauth-key.sh
+      # and upload the private key as a Render Secret File:
+      #   WEB_BOT_AUTH_KEY_FILE   e.g. /etc/secrets/webbotauth-private.pem
+      #
+      # Deliberately left out of this file -- see .env.example for the
+      # full list with explanations. Proxy credentials and private keys
+      # do not belong in a committed render.yaml.
